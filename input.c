@@ -67,6 +67,8 @@ BOOL EncodeKeyString(PKEY_EVENT_RECORD Record, PCHAR HotKey, SIZE_T MaxLen)
             // Don't print anything.
         } else if (KeyCode != VK_CONTROL && Enhanced) {
             KeyNames[NumKeys++] = RegKeyNames[MapVirtualKey(VK_CONTROL, MAPVK_VK_TO_VSC)];
+        } else if (KeyCode != VK_CONTROL && !Enhanced) {
+            KeyNames[NumKeys++] = RegKeyNames[MapVirtualKey(VK_CONTROL, MAPVK_VK_TO_VSC)];
         }
     }
     if (Record->dwControlKeyState & RIGHT_CTRL_PRESSED) {
@@ -257,6 +259,22 @@ BOOL DecodeKeyString(LPCSTR HotKey, PKEY_EVENT_RECORD Record)
                 Record->uChar.AsciiChar = ")!@#$%^&*("[KeyCode - '0'];
             }
         }
+
+        // https://www.codeproject.com/Questions/511401/apluslittleplusaboutplusMSGplusHandingplusaboutplu
+        if (KeyCode == VK_BACK) {
+            if (CtrlState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) {
+                if ((CtrlState & ~(LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) == 0) {
+                    Record->uChar.AsciiChar = 0x7f;
+                }
+            }
+        }
+
+        if (KeyCode == VK_OEM_PERIOD) {
+            if (CtrlState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) {
+                Record->uChar.AsciiChar = 0;
+            }
+        }
+
     }
 
     return TRUE;

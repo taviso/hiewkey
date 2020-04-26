@@ -19,5 +19,7 @@
 *.msi
 *.wixobj
 *.wixpdb
+*.dll
+*.hem
 .nobackup
 build-*/

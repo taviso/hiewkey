@@ -7,6 +7,7 @@
 #include <ntstatus.h>
 
 #include "hem.h"
+#include "input.h"
 
 static HEM_API Hem_EntryPoint(HEMCALL_TAG *);
 static HEM_API Hem_Unload(void);
@@ -26,65 +27,18 @@ HEMINFO_TAG KeyboardHelper = {
     .about3         = "",
 };
 
-// The maximum number of keys in a key combination.
-#define MAX_KEYS 4
-
 // How long to wait between simulated input events.
 #define KEY_SEND_DELAY 64
 
 typedef struct _HIEW_KEYS {
     PCHAR Key;
     PCHAR Description;
-    DWORD Flags;
-    KEY_EVENT_RECORD Sequence[MAX_KEYS];
 } HIEW_KEYS, *PHIEW_KEYS;
 
-#define KEY_FLAG_DEFAULT      (0)
-#define KEY_FLAG_MAPCHAR      (1 << 0)
-#define KEY_FLAG_MAPVSC       (1 << 1)
-#define KEY_FLAG_MAPVSCEX     (1 << 2)
-#define KEY_FLAG_NOUP         (1 << 3)
-#define KEY_FLAG_MAPALL       (KEY_FLAG_MAPCHAR | KEY_FLAG_MAPVSC)
-
 static HIEW_KEYS HiewKeys[] = {
-    {
-        "Ctrl-Alt", "information", KEY_FLAG_NOUP | KEY_FLAG_MAPVSC, {
-            {
-                .wVirtualKeyCode    = VK_CONTROL,
-                .dwControlKeyState  = LEFT_CTRL_PRESSED,
-            },
-            {
-                .wVirtualKeyCode    = VK_MENU,
-                .dwControlKeyState  = LEFT_CTRL_PRESSED | LEFT_ALT_PRESSED,
-            },
-        },
-    },
-    {
-        "Ctrl-Backspace", "file history", KEY_FLAG_MAPVSC, {
-            {
-                .wVirtualKeyCode    = VK_CONTROL,
-                .dwControlKeyState  = LEFT_CTRL_PRESSED,
-            },
-            {
-                .wVirtualKeyCode    = VK_BACK,
-                .uChar.AsciiChar    = 0x7f,
-                .dwControlKeyState  = LEFT_CTRL_PRESSED
-            },
-        },
-    },
-    {
-        "Ctrl-.", "start/stop recording macro to Macro0", KEY_FLAG_MAPVSC, {
-            {
-                .wVirtualKeyCode    = VK_CONTROL,
-                .dwControlKeyState  = LEFT_CTRL_PRESSED,
-            },
-            {
-                .wVirtualKeyCode    = VK_OEM_PERIOD,
-                .uChar.AsciiChar    = 0,
-                .dwControlKeyState  = LEFT_CTRL_PRESSED,
-            },
-        }
-    }
+    { "Ctrl+Alt", "information" },
+    { "Ctrl+Backspace", "file history" },
+    { "Ctrl+.", "start/stop recording macro to Macro0" }
 };
 
 DWORD WINAPI SendInputThread(LPVOID lpvThreadParam);
@@ -106,12 +60,6 @@ static PCHAR HiewGate_StringDup(LPCSTR String)
     PCHAR Result;
     Result = HiewGate_GetMemory(strlen(String) + 1);
     return strcpy(Result, String);
-}
-
-HEM_BYTE *CallBackLine(int n, PVOID user)
-{
-    MessageBox(NULL, "linecallback", "ok", 0);
-    return NULL;
 }
 
 int HEM_API Hem_EntryPoint(HEMCALL_TAG *HemCall)
@@ -147,7 +95,7 @@ int HEM_API Hem_EntryPoint(HEMCALL_TAG *HemCall)
                            0,
                            NULL,
                            NULL,
-                           CallBackLine,
+                           NULL,
                            NULL);
 
     // Clean up.
@@ -156,7 +104,7 @@ int HEM_API Hem_EntryPoint(HEMCALL_TAG *HemCall)
     }
 
     if (KeyNum-- <= 0) {
-        HiewGate_Message("Error", "I think you quit");
+        HiewGate_Message("Error", "Action was cancelled.");
         return HEM_OK;
     }
 
@@ -176,99 +124,23 @@ DWORD WINAPI SendInputThread(LPVOID lpvThreadParam)
     WORD ScanCodeEx;
     WORD KeyCode;
     CHAR AsciiChar;
+    INT Event;
 
     INPUT_RECORD InputRecord = {
         .EventType = KEY_EVENT,
     };
 
     // Wait for dialogs to clean up.
-    Sleep(200);
+    Sleep(KEY_SEND_DELAY);
 
     InputKeys = lpvThreadParam;
 
-    for (DWORD Event = 0; Event < _countof(InputKeys->Sequence); Event++) {
-        CopyMemory(&InputRecord.Event,
-                   &InputKeys->Sequence[Event],
-                   sizeof(KEY_EVENT_RECORD));
+    DecodeKeyString(InputKeys->Key, &InputRecord.Event.KeyEvent);
 
-        // Figure out the missing fields.
-        KeyCode     = InputRecord.Event.KeyEvent.wVirtualKeyCode;
-        ScanCode    = MapVirtualKey(KeyCode, MAPVK_VK_TO_VSC);
-        AsciiChar   = MapVirtualKey(KeyCode, MAPVK_VK_TO_CHAR);
-        ScanCodeEx  = MapVirtualKey(KeyCode, MAPVK_VK_TO_VSC_EX);
-
-        // If Keycode is zero, we've finished.
-        if (KeyCode == 0)
-            break;
-
-        if (InputKeys->Flags & KEY_FLAG_MAPCHAR)
-            InputRecord.Event.KeyEvent.uChar.AsciiChar = AsciiChar;
-
-        if (InputKeys->Flags & KEY_FLAG_MAPVSC)
-            InputRecord.Event.KeyEvent.wVirtualScanCode = ScanCode;
-
-        if (InputKeys->Flags & KEY_FLAG_MAPVSCEX)
-            InputRecord.Event.KeyEvent.wVirtualScanCode = ScanCodeEx;
-
-        InputRecord.Event.KeyEvent.wRepeatCount = 1;
-        InputRecord.Event.KeyEvent.bKeyDown     = TRUE;
-
-        WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE),
-                          &InputRecord,
-                          1,
-                          &EventCount);
-
-        Sleep(KEY_SEND_DELAY);
-    }
-
-    // Don't undo the key presses
-    if (InputKeys->Flags & KEY_FLAG_NOUP)
-        return 0;
-
-    for (DWORD Event = _countof(InputKeys->Sequence); Event > 0; Event--) {
-        DWORD Event = 1;
-        CopyMemory(&InputRecord.Event,
-                   &InputKeys->Sequence[Event - 1],
-                   sizeof(KEY_EVENT_RECORD));
-
-        // Figure out the missing fields.
-        KeyCode     = InputRecord.Event.KeyEvent.wVirtualKeyCode;
-        ScanCode    = MapVirtualKey(KeyCode, MAPVK_VK_TO_VSC);
-        AsciiChar   = MapVirtualKey(KeyCode, MAPVK_VK_TO_CHAR);
-        ScanCodeEx  = MapVirtualKey(KeyCode, MAPVK_VK_TO_VSC_EX);
-
-        // If Keycode is zero, this is empty.
-        if (KeyCode == 0)
-            continue;
-
-        if (InputKeys->Flags & KEY_FLAG_MAPCHAR)
-            InputRecord.Event.KeyEvent.uChar.AsciiChar = AsciiChar;
-
-        if (InputKeys->Flags & KEY_FLAG_MAPVSC)
-            InputRecord.Event.KeyEvent.wVirtualScanCode = ScanCode;
-
-        if (InputKeys->Flags & KEY_FLAG_MAPVSCEX)
-            InputRecord.Event.KeyEvent.wVirtualScanCode = ScanCodeEx;
-
-        if (KeyCode == VK_CONTROL)
-            InputRecord.Event.KeyEvent.dwControlKeyState &= ~LEFT_CTRL_PRESSED;
-
-        if (KeyCode == VK_SHIFT)
-            InputRecord.Event.KeyEvent.dwControlKeyState &= ~SHIFT_PRESSED;
-
-        if (KeyCode == VK_MENU)
-            InputRecord.Event.KeyEvent.dwControlKeyState &= ~LEFT_ALT_PRESSED;
-
-        InputRecord.Event.KeyEvent.wRepeatCount = 1;
-        InputRecord.Event.KeyEvent.bKeyDown     = FALSE;
-
-        WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE),
-                          &InputRecord,
-                          1,
-                          &EventCount);
-
-        Sleep(KEY_SEND_DELAY);
-    }
+    WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE),
+                      &InputRecord,
+                      1,
+                      &EventCount);
 
     return 0;
 }
