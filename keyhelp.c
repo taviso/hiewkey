@@ -38,7 +38,10 @@ typedef struct _HIEW_KEYS {
 static HIEW_KEYS HiewKeys[] = {
     { "Ctrl+Alt", "information" },
     { "Ctrl+Backspace", "file history" },
-    { "Ctrl+.", "start/stop recording macro to Macro0" }
+    { "Ctrl+.", "start/stop recording macro to Macro0" },
+    { "Ctrl+-", "Macro manager" },
+    { "Ctrl+NumMult", "mark all" },
+    { "Alt+NumMult", "resize block to current offset" },
 };
 
 DWORD WINAPI SendInputThread(LPVOID lpvThreadParam);

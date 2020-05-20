@@ -247,9 +247,17 @@ BOOL DecodeKeyString(LPCSTR HotKey, PKEY_EVENT_RECORD Record)
             }
         }
 
-        // In general, for ascii chars the lowercase form seems to be used.
         if (KeyCode == Record->uChar.AsciiChar && isalpha(KeyCode)) {
+
+            // In general, for ascii chars the lowercase form seems to be used.
             Record->uChar.AsciiChar = tolower(KeyCode);
+
+            // If you hold ctrl, you get the ctrl characters, in alphabetic
+            // order.
+            if (CtrlState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) {
+                // Is this right??????????????
+                Record->uChar.AsciiChar -= 'a' - 1;
+            }
         }
 
         if (KeyCode == Record->uChar.AsciiChar && isdigit(KeyCode)) {
@@ -257,6 +265,11 @@ BOOL DecodeKeyString(LPCSTR HotKey, PKEY_EVENT_RECORD Record)
                 // I don't think there's any way to figure out what this should be
                 // without localization, so I'll just simulate it.
                 Record->uChar.AsciiChar = ")!@#$%^&*("[KeyCode - '0'];
+            }
+            // fallthrough intentional.
+            // If CTRL is pressed with a digit, AsciiChar is always 0.
+            if (CtrlState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) {
+                Record->uChar.AsciiChar = 0;
             }
         }
 
@@ -269,9 +282,28 @@ BOOL DecodeKeyString(LPCSTR HotKey, PKEY_EVENT_RECORD Record)
             }
         }
 
-        if (KeyCode == VK_OEM_PERIOD) {
-            if (CtrlState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) {
-                Record->uChar.AsciiChar = 0;
+        // This needs some work to understand.
+        if (CtrlState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) {
+            switch (KeyCode) {
+                case VK_RETURN:
+                    Record->uChar.AsciiChar = '\n';
+                    break;
+                case VK_OEM_7:  // '#'
+                    Record->uChar.AsciiChar = 28;
+                    break;
+                case VK_OEM_4:  // '['
+                case VK_OEM_6:  // ']'
+                case VK_OEM_5:  // '\\'
+                    Record->uChar.AsciiChar -= 'A' - 1;
+                    break;
+                case VK_OEM_1:  // ';'
+                case VK_OEM_3:  // '~'
+                case VK_OEM_PERIOD:
+                case VK_OEM_MINUS:
+                case VK_OEM_PLUS:
+                case VK_TAB:
+                    Record->uChar.AsciiChar = 0;
+                    break;
             }
         }
 

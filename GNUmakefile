@@ -1,16 +1,16 @@
-include ../GNUmakefile.common
+include GNUmakefile.common
 
 LDLIBS      += user32
 
 %.hem: %.dll
-	cp $< $@
+	$(CP) $< $@
 
 all: keyhelp.hem
 
-keyhelp.dll: input.obj keyhelp.obj hiewgate.obj
+keyhelp.dll: input.obj keyhelp.obj hiewgate.obj hiewkey.res
 
 clean::
 	$(RM) *.hem
 
-install: keyhelp.hem
-	cp $^ ~/User/Applications/Hiew/hem/
+release::
+	zip hiewkey.zip keyhelp.hem README.md
